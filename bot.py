@@ -4,7 +4,8 @@ import requests
 import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
-TOKEN = "8298951678:AAGHWFexDQXoNCLyWOcR7_DL1XkZFRA_B-E"
+import os
+TOKEN = os.getenv("TOKEN")
 
 users = {}
 
@@ -52,5 +53,6 @@ app.add_handler(MessageHandler(filters.TEXT, set_city))
 scheduler = BackgroundScheduler()
 scheduler.add_job(lambda: app.create_task(check_prayers(None)), "interval", minutes=1)
 scheduler.start()
+
 
 app.run_polling()
