@@ -1,12 +1,14 @@
 services:
   - type: web
-    name: muslim-bot
+    name: muslim-prayer
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
-      - key: TELEGRAM_BOT_TOKEN
+      - key: 8298951678:AAGHWFexDQXoNCLyWOcR7_DL1XkZFRA_B-E
         sync: false
       - key: PORT
         value: 10000
+    healthCheckPath: /
+    autoDeploy: true
