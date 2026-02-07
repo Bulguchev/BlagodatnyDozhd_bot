@@ -14,10 +14,18 @@ AZKAR_URLS = {
     "Важные дуа": "https://azkar.ru/important/"
 }
 
+PRAYER_NAMES = {
+    "Fajr": "Фаджр (Утренний намаз)",
+    "Dhuhr": "Зухр (Полуденный намаз)",
+    "Asr": "Аср (После полудня)",
+    "Maghrib": "Магриб (Вечерний намаз)",
+    "Isha": "Иша (Ночной намаз)"
+}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Ассаляму алейкум! 🌙\nЯ бот «Благодатный дождь».\nНапиши свой город (например: Tashkent)\n"
-        "Напиши 'время', чтобы увидеть все намазы.\nИли нажми /azkar, чтобы открыть азкары."
+        "Ассаламу алейкум! 🌙\nЯ бот «Благодатный дождь».\n"
+        "Напиши свой город (например: Назрань, Москва)\nНапиши 'время', чтобы увидеть все намазы.\nИли нажми /azkar, чтобы открыть азкары."
     )
 
 async def set_city_or_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -30,7 +38,7 @@ async def set_city_or_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         city = users[user_id]
         times = get_prayer_times(city)
         if times:
-            msg = "\n".join([f"{k}: {v}" for k,v in times.items()])
+            msg = "\n".join([f"{PRAYER_NAMES.get(k, k)}: {v}" for k,v in times.items()])
             await update.message.reply_text(f"🕌 Время намазов в {city}:\n{msg}")
         else:
             await update.message.reply_text("Не удалось получить время намазов.")
@@ -53,9 +61,9 @@ def get_azkar(category):
         return "Азкар не найден"
     try:
         r = requests.get(url)
-        text = re.findall(r'<p>(.*?)</p>', r.text, re.DOTALL)
-        text = [re.sub(r'<.*?>', '', t).strip() for t in text if t.strip()]
-        return "\n\n".join(text)[:4000] if text else "Азкар не найден"
+        paragraphs = re.findall(r'<p>(.*?)</p>', r.text, re.DOTALL)
+        paragraphs = [re.sub(r'<.*?>', '', p).strip() for p in paragraphs if p.strip()]
+        return "\n\n".join(paragraphs) if paragraphs else "Азкар не найден"
     except:
         return "Ошибка при получении азкаров"
 
@@ -81,7 +89,7 @@ async def check_prayers(app):
         times = get_prayer_times(city)
         for name, time in times.items():
             if time == now:
-                await app.bot.send_message(chat_id=user_id, text=f"🕌 Время намаза: {name}\nПусть Аллах примет твою молитву")
+                await app.bot.send_message(chat_id=user_id, text=f"🕌 Время намаза: {PRAYER_NAMES.get(name, name)}\nПусть Аллах примет твою молитву")
 
 app = Application.builder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
