@@ -1,157 +1,213 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler, filters
-import requests, datetime, os
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+import requests
+import datetime
+import os
 from apscheduler.schedulers.background import BackgroundScheduler
 
 TOKEN = os.getenv("TOKEN")
-users = {}
-azkar_pages = {}
-hadis_index = 0
 
-PRAYER_NAMES = {
-    "Fajr": "🌅 Фаджр (Утренний намаз)",
-    "Dhuhr": "🕌 Зухр (Полуденный намаз)",
-    "Asr": "🕋 Аср (После полудня)",
-    "Maghrib": "🌇 Магриб (Вечерний намаз)",
-    "Isha": "🌙 Иша (Ночной намаз)"
+# ---------------- ДАННЫЕ ----------------
+
+users = {}          # user_id -> city
+current_index = {}  # user_id -> index
+
+PRAYER_NAMES_RU = {
+    "Fajr": "Фаджр",
+    "Dhuhr": "Зухр",
+    "Asr": "Аср",
+    "Maghrib": "Магриб",
+    "Isha": "Иша"
 }
 
-AZKAR_TEXTS = {
-    "Утренние": [
-        "أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ\nAsbahna wa asbaha al-mulku lillah\nМы вступили в утро, и вся власть принадлежит Аллаху\n" + "―"*30,
-        "اللَّهُمَّ بِكَ أَصْبَحْنَا وَبِكَ أَمْسَيْنَا\nAllahumma bika asbahna wa bika amsayna\nО Аллах! С Тобой мы вступили в утро и вечер\n" + "―"*30
-    ],
-    "Вечерние": [
-        "أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ\nAmsayna wa amsa al-mulku lillah\nМы вступили в вечер, и вся власть принадлежит Аллаху\n" + "―"*30,
-        "اللَّهُمَّ بِكَ أَمْسَيْنَا وَبِكَ أَصْبَحْنَا\nAllahumma bika amsayna wa bika asbahna\nО Аллах! С Тобой мы вступили в вечер и утро\n" + "―"*30
-    ],
-    "После намаза": [
-        "سُبْحَانَ اللَّهِ وَالْحَمْدُ لِلَّهِ\nSubhanallah wa alhamdulillah\nПречист Аллах, хвала Аллаху\n" + "―"*30
-    ],
-    "Дуа из Корана": [
-        "رَبَّنَا لَا تُؤَاخِذْنَا إِن نَسِينَا أَوْ أَخْطَأْنَا\nRabbana la tu-akhidhna in nasina aw akhta\nГосподь наш! Не наказывай нас, если мы забыли или ошиблись\n" + "―"*30
-    ],
-    "Важные дуа": [
-        "اللَّهُمَّ اهْدِنَا فِيْمَا أَخْتُلِفَ فِيهِ\nAllahumma ihdina fima akhtulifa fih\nО Аллах! Направь нас в том, в чем мы расходились\n" + "―"*30
-    ]
-}
+PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
-HADIS = [
-    "Хадис 1: Кто говорит «Субханаллах» сто раз, тому прощаются грехи.",
-    "Хадис 2: Кто читает утренние и вечерние азкары, того оберегает Аллах.",
-    "Хадис 3: Кто приветствует салаватом Пророка ﷺ, получает вознаграждение."
+MORNING_AZKAR = [
+    {
+        "title": "Утренний зикр 1",
+        "arabic": "أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ",
+        "translit": "Asbahna wa asbahal-mulku lillah",
+        "ru": "Мы встретили утро, и власть принадлежит Аллаху"
+    },
+    {
+        "title": "Утренний зикр 2",
+        "arabic": "اللّهـمَّ بِكَ أَصْـبَحْنا",
+        "translit": "Allahumma bika asbahna",
+        "ru": "О Аллах, с Тобой мы встретили утро"
+    }
 ]
 
-SALAWAT = "اللهم صل على محمد\nAllahumma salli ala Muhammad"
+EVENING_AZKAR = [
+    {
+        "title": "Вечерний зикр 1",
+        "arabic": "أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ",
+        "translit": "Amsayna wa amsal-mulku lillah",
+        "ru": "Мы встретили вечер, и власть принадлежит Аллаху"
+    }
+]
 
-def get_azkar_pages(category):
-    texts = AZKAR_TEXTS.get(category, ["Азкар не найден"])
-    return [t for t in texts]
+HADITHS = [
+    "Дела оцениваются по намерениям. (Бухари, Муслим)",
+    "Лучшие из вас — лучшие по нраву. (Бухари)",
+    "Аллах любит мягкость во всех делах. (Муслим)"
+]
 
-def build_keyboard(category, page, total):
-    keyboard = []
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"{category}|{page-1}"))
-    if page < total-1:
-        nav.append(InlineKeyboardButton("➡️ Вперед", callback_data=f"{category}|{page+1}"))
-    if nav:
-        keyboard.append(nav)
-    return InlineKeyboardMarkup(keyboard) if keyboard else None
+SALAWAT_TEXT = "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ 🤍"
 
-async def azkar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("☀️ Утренние", callback_data="Утренние|0")],
-        [InlineKeyboardButton("🌇 Вечерние", callback_data="Вечерние|0")],
-        [InlineKeyboardButton("🕌 После намаза", callback_data="После намаза|0")],
-        [InlineKeyboardButton("📖 Дуа из Корана", callback_data="Дуа из Корана|0")],
-        [InlineKeyboardButton("❗ Важные дуа", callback_data="Важные дуа|0")]
-    ]
-    await update.message.reply_text("Выберите категорию азкаров:", reply_markup=InlineKeyboardMarkup(keyboard))
+# ---------------- API ----------------
 
-async def azkar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    category, page_str = query.data.split("|")
-    page = int(page_str)
-    key = f"{query.message.chat.id}_{category}"
-    if key not in azkar_pages:
-        azkar_pages[key] = get_azkar_pages(category)
-    pages = azkar_pages[key]
-    text = f"{category} ({page+1}/{len(pages)})\n\n{pages[page]}"
-    reply_markup = build_keyboard(category, page, len(pages))
-    await query.message.edit_text(text, reply_markup=reply_markup)
+def get_prayer_times(city):
+    url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Uzbekistan&method=2"
+    data = requests.get(url).json()
+    return data["data"]["timings"]
+
+# ---------------- ВСПОМОГАТЕЛЬНОЕ ----------------
+
+def build_azkar_message(azkar_list, index):
+    item = azkar_list[index]
+    return (
+        f"📿 {item['title']}\n\n"
+        f"{item['arabic']}\n\n"
+        f"{item['translit']}\n\n"
+        f"{item['ru']}\n\n"
+        f"{index+1}/{len(azkar_list)}"
+    )
+
+def azkar_keyboard(category):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⬅️", callback_data=f"{category}_prev"),
+            InlineKeyboardButton("➡️", callback_data=f"{category}_next")
+        ],
+        [
+            InlineKeyboardButton("🏠 Меню", callback_data="menu")
+        ]
+    ])
+
+def main_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌅 Утренние азкары", callback_data="morning")],
+        [InlineKeyboardButton("🌇 Вечерние азкары", callback_data="evening")],
+        [InlineKeyboardButton("📖 Хадис дня", callback_data="hadith")],
+        [InlineKeyboardButton("🕌 Времена намазов", callback_data="times")]
+    ])
+
+# ---------------- КОМАНДЫ ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Ассаляму алейкум! 🌙\n"
-        "Я бот «Благодатный дождь».\n"
-        "Напишите свой город (например: Tashkent)\n"
-        "Напишите 'время', чтобы увидеть намазы.\n"
-        "Или нажмите /azkar, чтобы открыть азкары."
+        "Ассаляму алейкум 🌙\n"
+        "Я бот «Благодатный дождь».\n\n"
+        "Напиши свой город (например: Tashkent)"
     )
 
-async def set_city_or_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    uid = update.message.chat.id
-    if text.lower() == "время":
-        if uid not in users:
-            await update.message.reply_text("Сначала укажите город.")
-            return
-        city = users[uid]
+async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    city = update.message.text
+    user_id = update.message.chat_id
+    users[user_id] = city
+    current_index[user_id] = 0
+
+    await update.message.reply_text(
+        f"Город сохранён: {city}\n\nВыбери раздел:",
+        reply_markup=main_menu()
+    )
+
+# ---------------- КНОПКИ ----------------
+
+async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.message.chat_id
+
+    if user_id not in current_index:
+        current_index[user_id] = 0
+
+    idx = current_index[user_id]
+    city = users.get(user_id)
+
+    if query.data == "menu":
+        await query.edit_message_text("Главное меню:", reply_markup=main_menu())
+
+    elif query.data == "morning":
+        text = build_azkar_message(MORNING_AZKAR, idx)
+        await query.edit_message_text(text, reply_markup=azkar_keyboard("morning"))
+
+    elif query.data == "evening":
+        text = build_azkar_message(EVENING_AZKAR, idx)
+        await query.edit_message_text(text, reply_markup=azkar_keyboard("evening"))
+
+    elif query.data == "hadith":
+        hadith = HADITHS[datetime.datetime.now().day % len(HADITHS)]
+        await query.edit_message_text(f"📖 Хадис дня:\n\n{hadith}", reply_markup=main_menu())
+
+    elif query.data == "times":
         times = get_prayer_times(city)
-        if times:
-            msg = "\n".join([f"{PRAYER_NAMES.get(k,k)}: {v}" for k,v in times.items()])
-            await update.message.reply_text(f"🕌 Время намазов в {city}:\n{msg}")
-        else:
-            await update.message.reply_text("Не удалось получить намазы.")
-    else:
-        users[uid] = text
-        await update.message.reply_text(f"Город сохранён: {text}")
+        text = "🕌 Времена намазов:\n\n"
+        for key in PRAYERS:
+            text += f"{PRAYER_NAMES_RU[key]} — {times[key]}\n"
+        await query.edit_message_text(text, reply_markup=main_menu())
 
-def get_prayer_times(city):
-    try:
-        url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Uzbekistan&method=2"
-        r = requests.get(url)
-        return r.json()["data"]["timings"]
-    except:
-        return {}
+    elif query.data.endswith("_next"):
+        current_index[user_id] = (idx + 1) % len(MORNING_AZKAR)
+        await query.edit_message_text(
+            build_azkar_message(MORNING_AZKAR, current_index[user_id]),
+            reply_markup=azkar_keyboard("morning")
+        )
 
-async def check_prayers(app):
-    now = datetime.datetime.now().strftime("%H:%M")
-    for uid, city in users.items():
-        times = get_prayer_times(city)
-        if not times:
-            continue
-        if now == times.get("Fajr"):
-            await app.bot.send_message(chat_id=uid, text="🌅 Время Фаджр! Не забудьте прочитать утренние азкары.")
-        if now == times.get("Maghrib"):
-            await app.bot.send_message(chat_id=uid, text="🌇 Время Магриб! Не забудьте прочитать вечерние азкары.")
+    elif query.data.endswith("_prev"):
+        current_index[user_id] = (idx - 1) % len(MORNING_AZKAR)
+        await query.edit_message_text(
+            build_azkar_message(MORNING_AZKAR, current_index[user_id]),
+            reply_markup=azkar_keyboard("morning")
+        )
 
-async def daily_hadis(app):
-    global hadis_index
-    for uid in users.keys():
-        await app.bot.send_message(chat_id=uid, text=f"📜 Хадис на сегодня:\n{HADIS[hadis_index]}")
-    hadis_index = (hadis_index + 1) % len(HADIS)
+# ---------------- ПЛАНИРОВЩИК ----------------
 
-async def friday_salawat(app):
+async def scheduler_job(app):
     now = datetime.datetime.now()
-    if now.weekday() != 4:
-        return
-    for uid in users.keys():
-        await app.bot.send_message(chat_id=uid, text=f"🌹 Салават на Пророка ﷺ:\n{SALAWAT}")
+    time_str = now.strftime("%H:%M")
+    weekday = now.weekday()  # 4 = пятница
 
-app = Application.builder().token(TOKEN).build()
+    for user_id, city in users.items():
+        times = get_prayer_times(city)
+
+        # Все 5 намазов
+        for key in PRAYERS:
+            if times[key] == time_str:
+                ru_name = PRAYER_NAMES_RU[key]
+                await app.bot.send_message(
+                    chat_id=user_id,
+                    text=f"🕌 Время намаза: {ru_name}\nПусть Аллах примет твою молитву 🤲"
+                )
+
+        # Фаджр → утренние
+        if times["Fajr"] == time_str:
+            text = build_azkar_message(MORNING_AZKAR, 0)
+            await app.bot.send_message(chat_id=user_id, text="🌅 Утренние азкары:\n\n" + text)
+
+        # Магриб → вечерние
+        if times["Maghrib"] == time_str:
+            text = build_azkar_message(EVENING_AZKAR, 0)
+            await app.bot.send_message(chat_id=user_id, text="🌇 Вечерние азкары:\n\n" + text)
+
+        # Хадис дня
+        if time_str == "09:00":
+            hadith = HADITHS[now.day % len(HADITHS)]
+            await app.bot.send_message(chat_id=user_id, text="📖 Хадис дня:\n\n" + hadith)
+
+        # Пятничный салават
+        if weekday == 4 and time_str in ["10:00", "12:00", "14:00", "16:00", "18:00"]:
+            await app.bot.send_message(chat_id=user_id, text="🤍 Пятничный салават:\n" + SALAWAT_TEXT * 10)
+
+# ---------------- ЗАПУСК ----------------
+
+app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_city_or_time))
-app.add_handler(CommandHandler("azkar", azkar_command))
-app.add_handler(CallbackQueryHandler(azkar_callback))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_city))
+app.add_handler(CallbackQueryHandler(buttons))
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(lambda: app.create_task(check_prayers(app)), "interval", minutes=1)
-scheduler.add_job(lambda: app.create_task(daily_hadis(app)), "cron", hour=9, minute=0)
-for hour in range(8, 18):
-    scheduler.add_job(lambda h=hour: app.create_task(friday_salawat(app)), "cron", day_of_week="fri", hour=hour, minute=0)
+scheduler.add_job(lambda: app.create_task(scheduler_job(app)), "interval", minutes=1)
 scheduler.start()
 
 app.run_polling()
