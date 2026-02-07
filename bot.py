@@ -15,9 +15,9 @@ prayer_cache = {}
 
 PRAYER_NAMES_RU = {
     "Fajr": "🌅 Фаджр",
-    "Dhuhr": "☀️ Зухр", 
-    "Asr": "⛅ Аср",
-    "Maghrib": "🌇 Магриб", 
+    "Dhuhr": "☀️ Зухр",
+    "Asr": "⛅ Аср", 
+    "Maghrib": "🌇 Магриб",
     "Isha": "🌙 Иша"
 }
 
@@ -46,8 +46,8 @@ async def get_prayer_times(city):
                         timings = data["data"]["timings"]
                         prayer_cache[cache_key] = timings
                         return timings
-    except:
-        return None
+    except Exception as e:
+        print(f"Ошибка API: {e}")
     
     return None
 
@@ -71,7 +71,7 @@ async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     city = update.message.text.strip()
     
-    users_db[user_id] = {"city": city}
+    users_db[user_id] = {"city": city, "reminders": True}
     
     times = await get_prayer_times(city)
     
@@ -79,7 +79,8 @@ async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"✅ Город сохранён: {city}\n\n"
         text += "🕌 *Времена намазов на сегодня:*\n\n"
         
-        for prayer in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
+        prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+        for prayer in prayers:
             if prayer in times:
                 text += f"{PRAYER_NAMES_RU[prayer]} — {times[prayer]}\n"
         
@@ -91,11 +92,12 @@ async def set_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.job_queue.run_repeating(
             check_prayer_time,
             interval=60,
-            first=5,
+            first=10,
             name=str(user_id),
             chat_id=user_id,
             data={'city': city}
         )
+        
     else:
         await update.message.reply_text(
             f"Город {city} сохранён!\n\nВыберите действие:",
@@ -110,13 +112,17 @@ async def check_prayer_time(context: ContextTypes.DEFAULT_TYPE):
     if user_id not in users_db:
         return
     
+    if not users_db[user_id].get('reminders', True):
+        return
+    
     current_time = datetime.now().strftime("%H:%M")
     
     times = await get_prayer_times(city)
     if not times:
         return
     
-    for prayer in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
+    prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    for prayer in prayers:
         if prayer in times and times[prayer] == current_time:
             await context.bot.send_message(
                 chat_id=user_id,
@@ -125,6 +131,7 @@ async def check_prayer_time(context: ContextTypes.DEFAULT_TYPE):
             )
             
             if prayer == "Fajr":
+                await asyncio.sleep(1)
                 await context.bot.send_message(
                     chat_id=user_id,
                     text="🌅 *Не забудьте прочитать утренние азкары!*\n\nНажмите кнопку ниже 👇",
@@ -132,6 +139,7 @@ async def check_prayer_time(context: ContextTypes.DEFAULT_TYPE):
                     parse_mode='Markdown'
                 )
             elif prayer == "Maghrib":
+                await asyncio.sleep(1)
                 await context.bot.send_message(
                     chat_id=user_id,
                     text="🌇 *Не забудьте прочитать вечерние азкары!*\n\nНажмите кнопку ниже 👇",
@@ -151,7 +159,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             times = await get_prayer_times(city)
             if times:
                 text = f"🕌 *Времена намазов для {city}:*\n\n"
-                for prayer in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
+                prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+                for prayer in prayers:
                     if prayer in times:
                         text += f"{PRAYER_NAMES_RU[prayer]} — {times[prayer]}\n"
                 
@@ -187,34 +196,37 @@ async def send_hadith_daily(context: ContextTypes.DEFAULT_TYPE):
     if now.hour == 9 and now.minute == 0:
         hadith = HADITHS[now.day % len(HADITHS)]
         for user_id in users_db:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"📖 *Хадис дня:*\n\n{hadith}",
-                parse_mode='Markdown'
-            )
+            if users_db[user_id].get('reminders', True):
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"📖 *Хадис дня:*\n\n{hadith}",
+                    parse_mode='Markdown'
+                )
 
 async def send_friday_salawat(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     if now.weekday() == 4 and now.hour in [10, 12, 14, 16, 18] and now.minute == 0:
         salawat = "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ 🤍"
         for user_id in users_db:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"🤍 *Пятничный салават!*\n\n{salawat}",
-                parse_mode='Markdown'
-            )
+            if users_db[user_id].get('reminders', True):
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"🤍 *Пятничный салават!*\n\n{salawat}",
+                    parse_mode='Markdown'
+                )
 
 def main():
-    application = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
     
-    application.job_queue.run_repeating(send_hadith_daily, interval=3600)
-    application.job_queue.run_repeating(send_friday_salawat, interval=3600)
+    app.job_queue.run_repeating(send_hadith_daily, interval=60)
+    app.job_queue.run_repeating(send_friday_salawat, interval=60)
     
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_city))
-    application.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_city))
+    app.add_handler(CallbackQueryHandler(button_handler))
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    print("Бот запускается...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
