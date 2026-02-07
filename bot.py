@@ -1,72 +1,27 @@
-import os
-import datetime
-import requests
-from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
+import requests
+import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
+from bs4 import BeautifulSoup
+import os
 
 TOKEN = os.getenv("TOKEN")
-
 users = {}
 
-def is_valid_city(city):
-    try:
-        city_url = city.lower().replace(" ", "-")
-        url = f"https://www.time-namaz.ru/{city_url}/"
-        response = requests.get(url)
-        return response.status_code == 200
-    except:
-        return False
-
-def get_prayer_times(city):
-    try:
-        city_url = city.lower().replace(" ", "-")
-        url = f"https://www.time-namaz.ru/{city_url}/"
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, "html.parser")
-        table = soup.find("table")
-        times = {}
-        if table:
-            rows = table.find_all("tr")
-            for row in rows:
-                cols = row.find_all("td")
-                if len(cols) == 2:
-                    name = cols[0].get_text(strip=True)
-                    time = cols[1].get_text(strip=True)
-                    times[name] = time
-        return times
-    except:
-        return {}
-
-def get_azkar(category):
-    urls = {
-        "Утренние": "https://azkar.ru/morning/",
-        "Вечерние": "https://azkar.ru/evening/",
-        "После намаза": "https://azkar.ru/after-prayer/",
-        "Дуа из Корана": "https://azkar.ru/quran/",
-        "Важные дуа": "https://azkar.ru/important/"
-    }
-    url = urls.get(category)
-    if not url:
-        return "Ошибка: неизвестная категория"
-    try:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, "html.parser")
-        div = soup.find("div", class_="entry-content")
-        if not div:
-            return "Азкар не найдено :("
-        paragraphs = div.find_all("p")
-        text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
-        return text[:4000]
-    except:
-        return "Ошибка при получении азкаров"
+AZKAR_URLS = {
+    "Утренние": "https://azkar.ru/morning/",
+    "Вечерние": "https://azkar.ru/evening/",
+    "После намаза": "https://azkar.ru/after-prayer/",
+    "Дуа из Корана": "https://azkar.ru/quran/",
+    "Важные дуа": "https://azkar.ru/important/"
+}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Ассаляму алейкум! 🌙\n"
         "Я бот «Благодатный дождь».\n"
-        "Напиши свой город для намазов.\n"
+        "Напиши свой город (например: Tashkent)\n"
         "Напиши 'время', чтобы увидеть все намазы.\n"
         "Или нажми /azkar, чтобы открыть азкары."
     )
@@ -82,33 +37,37 @@ async def set_city_or_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         city = users[user_id]
         times = get_prayer_times(city)
         if times:
-            msg = "\n".join([f"{name}: {t}" for name, t in times.items()])
+            msg = "\n".join([f"{name}: {time}" for name, time in times.items()])
             await update.message.reply_text(f"🕌 Время намазов в {city}:\n{msg}")
         else:
             await update.message.reply_text("Не удалось получить время намазов для вашего города.")
-        return
-
-    elif ":" in text:
-        if user_id not in users:
-            await update.message.reply_text("Сначала укажите свой город.")
-            return
-        city = users[user_id]
-        times = get_prayer_times(city)
-        matching = {name: t for name, t in times.items() if t.startswith(text)}
-        if matching:
-            msg = "\n".join([f"{name}: {t}" for name, t in matching.items()])
-        else:
-            msg = "Нет совпадений с этим временем."
-        await update.message.reply_text(f"В {city} совпадения:\n{msg}")
-        return
-
     else:
-        city = text
-        if is_valid_city(city):
-            users[user_id] = city
-            await update.message.reply_text(f"Город сохранён: {city}\nТеперь я буду присылать напоминания о намазе 🤲")
-        else:
-            await update.message.reply_text("Город не найден. Попробуйте другой.")
+        users[user_id] = text
+        await update.message.reply_text(f"Город сохранён: {text}\nТеперь я буду присылать напоминания о намазе 🤲")
+
+def get_prayer_times(city):
+    try:
+        url = f"http://api.aladhan.com/v1/timingsByCity?city={city}&country=Uzbekistan&method=2"
+        response = requests.get(url)
+        data = response.json()
+        return data["data"]["timings"]
+    except:
+        return {}
+
+def get_azkar(category):
+    url = AZKAR_URLS.get(category)
+    if not url:
+        return "Азкар не найден"
+    try:
+        r = requests.get(url)
+        soup = BeautifulSoup(r.text, "html.parser")
+        div = soup.find("div", class_="entry-content")
+        if not div:
+            return "Азкар не найден"
+        paragraphs = div.find_all("p")
+        return "\n\n".join(p.get_text(strip=True) for p in paragraphs)[:4000]
+    except:
+        return "Ошибка при получении азкаров"
 
 async def azkar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -124,8 +83,7 @@ async def azkar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def azkar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    category = query.data
-    text = get_azkar(category)
+    text = get_azkar(query.data)
     await query.message.reply_text(text)
 
 async def check_prayers(app):
