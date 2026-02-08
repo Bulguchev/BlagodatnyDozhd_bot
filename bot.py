@@ -29,7 +29,7 @@ AZKAR_URL = "https://blagodat-app.vercel.app"
 def main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📍 Город", callback_data="city")],
-        [InlineKeyboardButton("📖 Открыть Азкары", web_app=WebAppInfo(url=https://azkar-app-omega.onrender.com))],
+        [InlineKeyboardButton("📖 Открыть Азкары", web_app=WebAppInfo(url="https://azkar-app-omega.onrender.com"))],
         [InlineKeyboardButton("🕌 Времена намазов", callback_data="times")]
     ])
 
