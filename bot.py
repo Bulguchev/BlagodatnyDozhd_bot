@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("8298951678:AAGHWFexDQXoNCLyWOcR7_DL1XkZFRA_B-E")
 
 users_db = {}
 
