@@ -6,7 +6,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
-      - key: 8298951678:AAGHWFexDQXoNCLyWOcR7_DL1XkZFRA_B-E
+      - key: TOKEN
         sync: false
       - key: PORT
         value: 10000
