@@ -105,7 +105,7 @@ def location_keyboard():
 
 def main_menu():
     keyboard = [
-        [InlineKeyboardButton("📱 Открыть Азкары", web_app=WebAppInfo(url="https://blagodat.vercel.app"))],
+        [InlineKeyboardButton("📱 Открыть Азкары", web_app=WebAppInfo(url="https://blagodatny-dozhd-j76zeu4g3-blgchevvs-projects.vercel.app"))],
         [InlineKeyboardButton("🕌 Времена намазов", callback_data="prayer_times")],
         [InlineKeyboardButton("📍 Изменить город", callback_data="change_city")]
     ]
