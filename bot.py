@@ -20,7 +20,7 @@ TOKEN = os.getenv("TOKEN")
 users_db = {}
 
 PRAYER_NAMES_RU = {
-    "Fajr": "🌅 Фаджр",
+    "Fajr": "🌅 Фаджрr",
     "Dhuhr": "☀️ Зухр",
     "Asr": "⛅ Аср",
     "Maghrib": "🌇 Магриб",
