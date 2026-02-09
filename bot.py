@@ -125,7 +125,7 @@ def location_keyboard():
 
 def main_menu():
     keyboard = [
-        [InlineKeyboardButton(text="📱 Открыть Азкары", web_app=WebAppInfo(url="https://azkar-app-omega.vercel.app"))],
+        [InlineKeyboardButton(text="📱 Открыть Азкары", web_app=WebAppInfo(url="https://azkar-app-omega.onrender.com"))],
         [InlineKeyboardButton(text="🕌 Времена намазов", callback_data="prayer_times")],
         [InlineKeyboardButton(text="📖 Хадис дня", callback_data="hadith_day")],
         [InlineKeyboardButton(text="📍 Изменить город", callback_data="change_city")]
